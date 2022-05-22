@@ -1,1 +1,1 @@
-# job-cheduler
+# job-scheduler
