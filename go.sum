@@ -1,2 +1,4 @@
+github.com/smallnest/queue v0.0.0-20201001101855-6d53a4f556a1 h1:HjHicHQjE2fKA38xAZtPe0scysCRs407VlBW1u8BSBA=
+github.com/smallnest/queue v0.0.0-20201001101855-6d53a4f556a1/go.mod h1:hvV8lQMd6Z1ZPBTaTCRlAbymFn6H9wlwAnQbefXc7Rw=
 golang.org/x/sync v0.0.0-20220513210516-0976fa681c29 h1:w8s32wxx3sY+OjLlv9qltkLU5yvJzxjjgiHWLjdIcw4=
 golang.org/x/sync v0.0.0-20220513210516-0976fa681c29/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=

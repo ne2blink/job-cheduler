@@ -1,97 +1,90 @@
 package job
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"sync/atomic"
 
+	"github.com/smallnest/queue"
 	"golang.org/x/sync/semaphore"
 )
 
-type Scheduler struct {
+type QueueScheduler struct {
 	semaphore *semaphore.Weighted
-	queue     queue
-	running   int32
-	closed    int32
+	queue     *queue.CQueue
 }
 
-func NewScheduler(concurrent int64) *Scheduler {
-	return &Scheduler{
+func NewQueueScheduler(concurrent int64) *QueueScheduler {
+	return &QueueScheduler{
 		semaphore: semaphore.NewWeighted(concurrent),
+		queue:     queue.NewCQueue(),
 	}
 }
 
-func (s *Scheduler) Start() error {
-	if err := s.checkClosed(); err != nil {
-		return err
-	}
-	if !s.stopped() {
-		return errors.New("already started")
-	}
-	atomic.StoreInt32(&s.running, 1)
+func (s *QueueScheduler) Add(job func()) {
+	s.queue.Enqueue(job)
 	s.run()
-	return nil
 }
 
-func (s *Scheduler) Stop() error {
-	if err := s.checkClosed(); err != nil {
-		return err
-	}
-	if s.stopped() {
-		return errors.New("already stopped")
-	}
-	atomic.StoreInt32(&s.running, 0)
-	return nil
-}
-
-func (s *Scheduler) Close() error {
-	if err := s.checkClosed(); err != nil {
-		return err
-	}
-	atomic.StoreInt32(&s.closed, 1)
-	if err := s.Stop(); err != nil {
-		return err
-	}
-	if length := s.queue.Len(); length > 0 {
-		return fmt.Errorf("closed with non-empty queue: length %d", length)
-	}
-	return nil
-}
-
-func (s *Scheduler) Add(job Job) error {
-	if err := s.checkClosed(); err != nil {
-		return err
-	}
-	s.queue.Push(job)
-	if !s.stopped() {
-		s.run()
-	}
-	return nil
-}
-
-func (s *Scheduler) run() {
+func (s *QueueScheduler) run() {
 	if !s.semaphore.TryAcquire(1) {
 		return
 	}
 	go func() {
 		defer s.semaphore.Release(1)
-		for !s.stopped() {
-			run := s.queue.Pop()
+		for {
+			run := s.queue.Dequeue()
 			if run == nil {
-				break
+				return
 			}
-			run()
+			run.(func())()
 		}
 	}()
 }
 
-func (s *Scheduler) checkClosed() error {
-	if atomic.LoadInt32(&s.closed) == 1 {
-		return errors.New("scheduler closed")
-	}
-	return nil
+type ChannelScheduler struct {
+	context    context.Context
+	concurrent int
+	queue      chan func()
+	running    int32
 }
 
-func (s *Scheduler) stopped() bool {
-	return atomic.LoadInt32(&s.running) == 0
+// NewChannelScheduler creates a new scheduler.
+func NewChannelScheduler(ctx context.Context, concurrent int) *ChannelScheduler {
+	return &ChannelScheduler{
+		context:    ctx,
+		concurrent: concurrent,
+		queue:      make(chan func()),
+	}
+}
+
+func (s *ChannelScheduler) SetQueueSize(size int) {
+	s.queue = make(chan func(), size)
+}
+
+func (s *ChannelScheduler) Start() {
+	if atomic.LoadInt32(&s.running) == 1 {
+		return
+	}
+	atomic.StoreInt32(&s.running, 1)
+	for i := 0; i < s.concurrent; i++ {
+		go func() {
+			for {
+				select {
+				case run := <-s.queue:
+					run()
+				case <-s.context.Done():
+					return
+				}
+			}
+		}()
+	}
+}
+
+func (s *ChannelScheduler) Add(job func()) error {
+	select {
+	case s.queue <- job:
+		return nil
+	case <-s.context.Done():
+		return context.Canceled
+	}
 }

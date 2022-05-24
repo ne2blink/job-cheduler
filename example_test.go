@@ -7,9 +7,8 @@ import (
 	"github.com/ne2blink/job-scheduler"
 )
 
-func ExampleScheduler() {
-	s := job.NewScheduler(1)
-	s.Start()
+func ExampleQueueScheduler() {
+	s := job.NewQueueScheduler(1)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
